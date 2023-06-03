@@ -259,6 +259,7 @@ namespace Program
         }
 
 
+        // TODO: A binary/batch file for binappender should automatically be added to the BinPath (Path of .exe: System.Reflection.Assembly.GetEntryAssembly().Location)
         private static void InitBinPath()
         {
             string? environmentVariable = Environment.GetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, EnvironmentVariableTarget.User);
