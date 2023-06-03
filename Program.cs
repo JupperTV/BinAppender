@@ -235,10 +235,22 @@ namespace Program
             while (!Directory.Exists(path) || StringIsBad(path)) {
                 path = Console.ReadLine();
 
-                if (!Directory.Exists(path))
-                    Console.WriteLine("The folder doesn't exist. Enter the path again:\n-> ");  // TODO: Add Option to create the folder
-                else if (StringIsBad(path))
-                    Console.Write("Enter the path to the bin folder:\n-> ");
+                if(File.Exists(path))
+                    Console.Write("\nThe given Path is a File. Enter the path to the bin folder again:\n->");
+
+                else if (!Directory.Exists(path))
+                {
+                    Console.Write($"\nThe directory doesn't exist. Create the (d)irectory `{path}` or (c)ancel the process? (Default ist to cancel the process):\n-> ");
+
+                    if (Console.ReadLine().ToLower() == "d")
+                    {
+                        Directory.CreateDirectory(path);
+                        Console.WriteLine($"Directory `{path}` created");
+                        break;
+                    } else
+                        return;
+                } else if (StringIsBad(path))
+                    Console.Write("\nEnter the path to the bin folder:\n-> ");
             }
             BinPath = path;
             Environment.SetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, BinPath, EnvironmentVariableTarget.User);
@@ -254,7 +266,10 @@ namespace Program
                 BinPath = environmentVariable;
             else
             {
+                ConsoleColor originalTextColor = Console.ForegroundColor;
+                Console.ForegroundColor = ConsoleColor.Red;
                 Console.Write("No environment variable fo the bin folder has been created");
+                Console.ForegroundColor = originalTextColor;
                 ChangeBinPath();
             }
 
@@ -311,7 +326,7 @@ namespace Program
                     case "o":
                     case "overwrite":
                         throw new NotImplementedException("TODO: Add Option to overwrite binaries (with a new executable)");
-                        UserInputIsAppend(true);  // It might be this easy, but I haven't tested it yet
+                        UserInputIsAppend(true);  // It might be this easy, but I haven't tested anything yet
                         break;
 
                     case "q":
@@ -321,7 +336,6 @@ namespace Program
 
                     default: continue;
                 }
-
                 Console.WriteLine($"\n{new string('-', Console.WindowWidth)}\n");  // After any option has been completed or cancelled
             }
         }
