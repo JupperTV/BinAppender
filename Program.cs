@@ -1,19 +1,20 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 
-namespace Program
+namespace BinAppender
 {
-    class Program
+    class BinAppender
     {
         private const string HELP_PAGE =
 """
 
-  a, append    Add binary
-  b, bin_set   Change the path of the folder for the binaries
-  d, delete    Delete binary
-  h, hilfe     This help page
-  q, quit      Exit
+  a, append     Add binary
+  c, changebin  Change the path of the folder for the binaries
+  d, delete     Delete binary
+  h, hilfe      This help page
+  q, quit       Exit
 
 """;
 
@@ -230,36 +231,49 @@ namespace Program
 
         private static void ChangeBinPath()
         {
-            string? path = null;
+            string? binPathByUser = null;
             Console.Write("\nEnter the path to the bin folder:\n-> ");
-            while (!Directory.Exists(path) || StringIsBad(path)) {
-                path = Console.ReadLine();
+            while (!Directory.Exists(binPathByUser) || StringIsBad(binPathByUser)) {
+                binPathByUser = Console.ReadLine();
 
-                if(File.Exists(path))
+                if(File.Exists(binPathByUser))
                     Console.Write("\nThe given Path is a File. Enter the path to the bin folder again:\n->");
 
-                else if (!Directory.Exists(path))
+                else if (!Directory.Exists(binPathByUser))
                 {
-                    Console.Write($"\nThe directory doesn't exist. Create the (d)irectory `{path}` or (c)ancel the process? (Default ist to cancel the process):\n-> ");
+                    Console.Write($"\nThe directory doesn't exist. Create the (d)irectory `{binPathByUser}` or (c)ancel the process? (Default ist to cancel the process):\n-> ");
 
                     if (Console.ReadLine().ToLower() == "d")
                     {
-                        Directory.CreateDirectory(path);
-                        Console.WriteLine($"Directory `{path}` created");
+                        Directory.CreateDirectory(binPathByUser);
+                        Console.WriteLine($"Directory `{binPathByUser}` created");
                         break;
                     } else
                         return;
-                } else if (StringIsBad(path))
+                } else if (StringIsBad(binPathByUser))
                     Console.Write("\nEnter the path to the bin folder:\n-> ");
             }
-            BinPath = path;
+
+            BinPath = binPathByUser;
             Environment.SetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, BinPath, EnvironmentVariableTarget.User);
+
+            // Add binappender to the new bin directory if it it isn't there already
+
+            // It's possible that the batch file for binappender
+            // is already in the new bin directory but with a different name
+            if (!File.Exists($"{BinPath}\\binappender.bat"))
+            {
+                Console.WriteLine($"BinAppender.exe will be added to the path `{BinPath}`");
+                string directoryOfExe = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string pathToExe = Path.Combine(directoryOfExe, "BinAppender.exe");
+                WriteBatchToBin(pathToExe, "binappender");
+            }
+
             Console.WriteLine("Done!");
             Console.WriteLine("\n");
         }
 
 
-        // TODO: A binary/batch file for binappender should automatically be added to the BinPath (Path of .exe: System.Reflection.Assembly.GetEntryAssembly().Location)
         private static void InitBinPath()
         {
             string? environmentVariable = Environment.GetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, EnvironmentVariableTarget.User);
@@ -269,7 +283,7 @@ namespace Program
             {
                 ConsoleColor originalTextColor = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write("No environment variable fo the bin folder has been created");
+                Console.Write("No environment variable for the bin folder has been created");
                 Console.ForegroundColor = originalTextColor;
                 ChangeBinPath();
             }
@@ -309,8 +323,8 @@ namespace Program
                         UserInputIsAppend(false);
                         break;
 
-                    case "b":
-                    case "bin_set":
+                    case "c":
+                    case "changebin":
                         ChangeBinPath();
                         break;
 
