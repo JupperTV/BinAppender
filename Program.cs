@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace BinAppender
@@ -13,13 +14,16 @@ namespace BinAppender
   a, append     Add binary
   c, changebin  Change the path of the folder for the binaries
   d, delete     Delete binary
-  h, hilfe      This help page
+  h, help       This help page
+  o, overwrite  Add or overwrite an existing binary
+  p, print      Show the path to the bin directory
   q, quit       Exit
 
 """;
 
         private const string ENVIRONMENT_VARIABLE_NAME = "BinAppender_BinPath";
         private static string BinPath = string.Empty;
+
 
         private static void WaitBeforeBadThingsHappen()  // The user has time to Ctrl+C just in case accidents happen
             => Thread.Sleep(3000);
@@ -156,13 +160,11 @@ namespace BinAppender
         }
 
 
-        private static void UserWantsAlias(string pathOfOriginalFile, string? aliasForBatchFile, bool overwrite)
+        private static void UserWantsAlias(string pathOfOriginalFile, string? aliasForBatchFile)
         {
             string batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(aliasForBatchFile)}.bat";
             if (File.Exists(batchFilePath))
             {
-                if (!overwrite)
-                {
                     string? returnedBinPath = WhenBatchFileAlreadyExists(pathOfOriginalFile, batchFilePath);
                     // If string.Empty is returned, then the user wants to cancel the process
                     if (returnedBinPath == string.Empty) {
@@ -170,7 +172,6 @@ namespace BinAppender
                         return;
                     }
                     aliasForBatchFile = returnedBinPath;
-                }
             }
 
             WriteBatchToBin(pathOfOriginalFile, aliasForBatchFile);
@@ -178,7 +179,7 @@ namespace BinAppender
         }
 
 
-        private static void UserInputIsAppend(bool overwrite)
+        private static void UserInputIsAppend()
         {
             string? pathOfOriginalFile = null;
             Console.Write("\n");  // This newline is only being printed out before the user input because it looks prettier
@@ -199,17 +200,17 @@ namespace BinAppender
                 pathOfOriginalFile = Console.ReadLine();
             }
 
-            Console.Write("\nEnter alias without a file extension: (Just press enter if there shouldn't be a different name for the binary)\n-> ");
+            Console.Write("\nEnter an alias for the binary without a file extension: (Just press enter if there shouldn't be a different name for the binary)\n-> ");
             string? aliasInput = Console.ReadLine();
             if (!StringIsBad(aliasInput))
             {
-                UserWantsAlias(pathOfOriginalFile, aliasInput, false);
+                UserWantsAlias(pathOfOriginalFile, aliasInput);
                 return;
             }
 
             string batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(pathOfOriginalFile)}.bat";
 
-            if (!overwrite && File.Exists(batchFilePath))
+            if (File.Exists(batchFilePath))
             {
                 string returnedBinPath = WhenBatchFileAlreadyExists(pathOfOriginalFile, batchFilePath);
                 // If string.Empty is returned, then the user wants to cancel the process
@@ -219,14 +220,48 @@ namespace BinAppender
                     return;
                 }
 
-                WriteBatchToBin(returnedBinPath);
+                pathOfOriginalFile = returnedBinPath;  // The file will be written outside this if-block
             }
 
             Console.WriteLine("No alias is being used");
             WriteBatchToBin(pathOfOriginalFile);
             Console.WriteLine("Done!");
         }
+
+
+        private static void UserInputIsOverwriteBinary()
+        {
+            Console.WriteLine();
+            string? binaryName = null;
+            while (StringIsBad(binaryName))
+            {
+                Console.Write("Enter the alias without the file extension:\n-> ");
+                binaryName = Console.ReadLine();
+            }
+
+            Console.WriteLine();
+            string? originalFilePath = null;
+            while (StringIsBad(originalFilePath) || !File.Exists(originalFilePath))
+            {
+                Console.Write("Enter the path to the original file (with the file extension):\n-> ");
+                originalFilePath = Console.ReadLine();
+
+                // Remove any " since Windows Explorer likes to copy the path with 2 " at the beginning and at the end.
+                // Windows Explorer does this when the filepath is copied through {filename} > right-click > Copy as Path
+                if (originalFilePath.Contains('\"'))
+                    originalFilePath = originalFilePath.Trim('\"');
+
+                if (!File.Exists(originalFilePath))
+                    Console.Write("The file doesn't exist.\n"); 
+            }
+            
+            // A file will be writen or overwriten, whether the file exists or not
+            Console.WriteLine($"Binary `{binaryName}` will be overwritten");
+            WriteBatchToBin(originalFilePath, binaryName);
+            Console.WriteLine("Done!");
+        }
         #endregion
+
 
 
         private static void ChangeBinPath()
@@ -258,10 +293,7 @@ namespace BinAppender
             Environment.SetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, BinPath, EnvironmentVariableTarget.User);
 
             // Add binappender to the new bin directory if it it isn't there already
-
-            // It's possible that the batch file for binappender
-            // is already in the new bin directory but with a different name
-            if (!File.Exists($"{BinPath}\\binappender.bat"))
+            if (!File.Exists($"{BinPath}\\binappender.bat"))  // It's possible that the batch file for binappender is already in the new bin directory
             {
                 Console.WriteLine($"BinAppender.exe will be added to the path `{BinPath}`");
                 string directoryOfExe = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
@@ -320,7 +352,7 @@ namespace BinAppender
                 {
                     case "a":
                     case "append":
-                        UserInputIsAppend(false);
+                        UserInputIsAppend();
                         break;
 
                     case "c":
@@ -333,6 +365,11 @@ namespace BinAppender
                         UserInputIsDeleteBinary();
                         break;
 
+                    case "g":
+                    case "get":
+                        // TODO: Make Function that prints out all of the batch files like "ls" in linux and unix or "dir" in windows
+                        break;
+
                     case "h":
                     case "help":
                         UserInputIsHelp();
@@ -340,8 +377,13 @@ namespace BinAppender
 
                     case "o":
                     case "overwrite":
-                        throw new NotImplementedException("TODO: Add Option to overwrite binaries (with a new executable)");
-                        UserInputIsAppend(true);  // It might be this easy, but I haven't tested anything yet
+                        UserInputIsOverwriteBinary();
+                        break;
+
+                    case "p":
+                    case "print":
+                        Console.WriteLine();
+                        Console.WriteLine(BinPath);
                         break;
 
                     case "q":
