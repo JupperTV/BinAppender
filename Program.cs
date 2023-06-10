@@ -2,6 +2,7 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Authentication.ExtendedProtection;
 using System.Threading;
 
 namespace BinAppender
@@ -12,12 +13,13 @@ namespace BinAppender
 """
 
   a, append     Add binary
-  c, changebin  Change the path of the folder for the binaries
+  c, changebin  Change the directory of the binaries
   d, delete     Delete binary
+  g, get        Get all of the files in the bin directory and their content
   h, help       This help page
   o, overwrite  Add or overwrite an existing binary
   p, print      Show the path to the bin directory
-  q, quit       Exit
+  q, quit       Exit this Program
 
 """;
 
@@ -68,6 +70,45 @@ namespace BinAppender
                 Console.WriteLine("DONE!");
             } else {
                 Console.WriteLine("Process canceled");
+            }
+        }
+
+
+        private static void UserInputIsListFiles()
+        {
+            const string FILE_EXTENSION_FOR_BINARIES_IN_BINPATH = ".bat";
+            // TopDirectoryOnly because it's possible that there are batch files in subdirectories of `BinPath`, which won't be part of %BinAppender_BinPath%
+            string[] filesInBin = Directory.GetFiles(BinPath, $"*{FILE_EXTENSION_FOR_BINARIES_IN_BINPATH}", SearchOption.TopDirectoryOnly);
+
+            foreach (string batchFilePath in filesInBin)
+            {
+                string completeFile = File.ReadAllText(batchFilePath);
+                string firstLineInFile = completeFile.Split('\n')[0];
+                string everythingAfterEchoOff = completeFile.Substring(firstLineInFile.Length+1);
+
+                // The batch file was created by this program
+                if (everythingAfterEchoOff.StartsWith('"')  && firstLineInFile.ToLower() == "@echo off")
+                {
+                    string lineWithExecution = completeFile.Split('\n')[1];
+
+                    // Get the file that the batch file will run when executed
+                    int from = lineWithExecution.IndexOf('"') + 1;  // +1 to not have the " at the start
+                    int to = lineWithExecution.LastIndexOf('"') - 1;  // -1 for the same reason
+
+                    string originalFilePath = lineWithExecution.Substring(from, to);
+
+                    Console.WriteLine($"{batchFilePath} -> {originalFilePath}");
+                } else {  // The batch file was created manually
+
+                    Console.Write($"\nContent of {batchFilePath}:\n");
+                    foreach (string line in completeFile.Split("\n"))
+                        if (line.Length >= 1)  // If it's not a newline
+                            Console.WriteLine($"\t{line}");
+
+                    Console.WriteLine();
+                }
+
+                
             }
         }
 
@@ -263,7 +304,6 @@ namespace BinAppender
         #endregion
 
 
-
         private static void ChangeBinPath()
         {
             string? binPathByUser = null;
@@ -296,7 +336,7 @@ namespace BinAppender
             if (!File.Exists($"{BinPath}\\binappender.bat"))  // It's possible that the batch file for binappender is already in the new bin directory
             {
                 Console.WriteLine($"BinAppender.exe will be added to the path `{BinPath}`");
-                string directoryOfExe = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string directoryOfExe = Path.GetDirectoryName(AppContext.BaseDirectory);  // TODO: Check if this stuff works when it's executed as a single file and normally through Visual Studio
                 string pathToExe = Path.Combine(directoryOfExe, "BinAppender.exe");
                 WriteBatchToBin(pathToExe, "binappender");
             }
@@ -367,7 +407,7 @@ namespace BinAppender
 
                     case "g":
                     case "get":
-                        // TODO: Make Function that prints out all of the batch files like "ls" in linux and unix or "dir" in windows
+                        UserInputIsListFiles();
                         break;
 
                     case "h":
