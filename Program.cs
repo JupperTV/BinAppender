@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Authentication.ExtendedProtection;
 using System.Threading;
@@ -12,20 +13,19 @@ namespace BinAppender
         private const string HELP_PAGE =
 """
 
-  a, append     Add binary
-  c, changebin  Change the directory of the binaries
-  d, delete     Delete binary
-  g, get        Get all of the files in the bin directory and their content
+  a, append     Add a batch script
+  c, changebin  Change the directory of the batch scripts
+  d, delete     Delete a batch script
+  g, get        Show the path to the bin directory
   h, help       This help page
-  o, overwrite  Add or overwrite an existing binary
-  p, print      Show the path to the bin directory
+  l, ls, dir    Get all of the scripts in the bin directory and their content
+  o, overwrite  Overwrite an existing or add a new batch script
   q, quit       Exit this Program
 
 """;
 
         private const string ENVIRONMENT_VARIABLE_NAME = "BinAppender_BinPath";
-        private static string BinPath = string.Empty;
-
+        private static string BinPath = string.Empty;  // It gets the actual path to the bin directory is InitBinPath()
 
         private static void WaitBeforeBadThingsHappen()  // The user has time to Ctrl+C just in case accidents happen
             => Thread.Sleep(3000);
@@ -45,44 +45,45 @@ namespace BinAppender
         }
 
 
-        private static void UserInputIsDeleteBinary()
+        private static void UserInputIsDelete()
         {
-            string? binName = null;
+            string? batchFileName = null;
             Console.Write("\n");
-            while (StringIsBad(binName)) {
-                Console.Write("Enter the name of the binary without the file extension:\n-> ");
-                binName = Console.ReadLine();
+            while (StringIsBad(batchFileName)) {
+                Console.Write("Enter the name of the batch script without the file extension:\n-> ");
+                batchFileName = Console.ReadLine();
 
-                if (!File.Exists($"{BinPath}\\{binName}.bat")){
-                    Console.WriteLine($"\nThe binary `{binName}` doesn't exist");
-                    binName = string.Empty;
+                if (!File.Exists($"{BinPath}\\{batchFileName}.bat")){
+                    Console.WriteLine($"\nThe file `{batchFileName}` doesn't exist");
+                    batchFileName = string.Empty;
                 }
             }
 
-            Console.Write($"\nDelete binary `{binName}`? (y/n) Wenn anything else than `y` is entered, the process will be canceled\n-> ");
+            Console.Write($"\nDelete `{batchFileName}` (y/n)? When anything else than `y` is entered, the process will be canceled\n-> ");
             if (Console.ReadLine().ToLower() == "y") {
-                string pathToBinary = $"{BinPath}\\{binName}.bat";
+                string pathToScript = $"{BinPath}\\{batchFileName}.bat";
 
                 WaitBeforeBadThingsHappen();
 
-                File.Delete(pathToBinary);
-                Console.WriteLine($"Binary {pathToBinary} has been deleted");
-                Console.WriteLine("DONE!");
+                File.Delete(pathToScript);
+                Console.WriteLine($"`{pathToScript}` has been deleted");
+                Console.WriteLine("Done!");
             } else {
                 Console.WriteLine("Process canceled");
             }
         }
 
 
-        private static void UserInputIsListFiles()
+        private static void UserInputIsList()
         {
-            const string FILE_EXTENSION_FOR_BINARIES_IN_BINPATH = ".bat";
-            // TopDirectoryOnly because it's possible that there are batch files in subdirectories of `BinPath`, which won't be part of %BinAppender_BinPath%
-            string[] filesInBin = Directory.GetFiles(BinPath, $"*{FILE_EXTENSION_FOR_BINARIES_IN_BINPATH}", SearchOption.TopDirectoryOnly);
+            const string FILE_EXTENSION_FOR_SCRIPTS_IN_BINPATH = ".bat";
 
-            foreach (string batchFilePath in filesInBin)
+            // TopDirectoryOnly because it's possible that there are batch files in subdirectories of `BinPath`, that aren't part of %BinAppender_BinPath%
+            string[] filesInBin = Directory.GetFiles(BinPath, $"*{FILE_EXTENSION_FOR_SCRIPTS_IN_BINPATH}", SearchOption.TopDirectoryOnly);
+
+            foreach (string scriptFilePath in filesInBin)
             {
-                string completeFile = File.ReadAllText(batchFilePath);
+                string completeFile = File.ReadAllText(scriptFilePath);
                 string firstLineInFile = completeFile.Split('\n')[0];
                 string everythingAfterEchoOff = completeFile.Substring(firstLineInFile.Length+1);
 
@@ -97,14 +98,12 @@ namespace BinAppender
 
                     string originalFilePath = lineWithExecution.Substring(from, to);
 
-                    Console.WriteLine($"{batchFilePath} -> {originalFilePath}");
+                    Console.WriteLine($"{scriptFilePath} -> {originalFilePath}");
                 } else {  // The batch file was created manually
-
-                    Console.Write($"\nContent of {batchFilePath}:\n");
+                    Console.Write($"\nContent of {scriptFilePath}:\n");
                     foreach (string line in completeFile.Split("\n"))
                         if (line.Length >= 1)  // If it's not a newline
                             Console.WriteLine($"\t{line}");
-
                     Console.WriteLine();
                 }
 
@@ -115,11 +114,11 @@ namespace BinAppender
 
         #region Write to bin folder
         /// <summary>
-        /// Name of the batch file = Name of the .exe file
+        /// Name of the batch file = Name of the executable file
         /// </summary>
-        /// <param name="originalFilePath"></param>
+        /// <param name="originalFilePath">The file that will be executed when the batch file is called</param>
         /// <exception cref="FileNotFoundException">Path to the original File has not been found</exception>
-        private static void WriteBatchToBin(string originalFilePath)
+        private static void WriteBatchToBinDirectory(string originalFilePath)
         {
             string batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(originalFilePath)}.bat";
 
@@ -133,19 +132,19 @@ namespace BinAppender
         /// <summary>
         /// Name of the batch file = aliasForBatchFile
         /// </summary>
-        /// <param name="originalFilePath"></param>
-        /// <param name="aliasForBatchFile">Der andere Name für die Batchdatei (!OHNE DATEIENDUNG!)</param>
+        /// <param name="originalFilePath">The file that will be executed when the batch file is called</param>
+        /// <param name="aliasForBatchFile">The name for the batch file (without the file extension)</param>
         /// <exception cref="ArgumentNullException"><paramref name="aliasForBatchFile"/> is null</exception>
-        /// <exception cref="FileNotFoundException">`File in <paramref name="originalFilePath"/> doesn't exist/exception>
-        private static void WriteBatchToBin(string originalFilePath, string? aliasForBatchFile)
+        /// <exception cref="FileNotFoundException">File in <paramref name="originalFilePath"/> doesn't exist</exception>
+        private static void WriteBatchToBinDirectory(string originalFilePath, string? aliasForBatchFile)
         {
             if (StringIsBad(aliasForBatchFile))
-                throw new ArgumentNullException($"Alias für das Programm ist leer. alias={aliasForBatchFile}");
+                throw new ArgumentNullException($"The provided name for the batch file is empty");
 
             string batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(aliasForBatchFile)}.bat";
 
             if (!File.Exists(originalFilePath))
-                throw new FileNotFoundException($"Die eingegebene Datei `{originalFilePath}` wurde nicht gefunden");
+                throw new FileNotFoundException($"The file `{originalFilePath}` doesn't exist");
 
             string contentOfBatchFile = $"@echo off\n\"{originalFilePath}\" %*";
             File.WriteAllText(batchFilePath, contentOfBatchFile);
@@ -158,18 +157,18 @@ namespace BinAppender
             {
                 ConsoleColor originalTextColor = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("A binary with the same name already exists");
+                Console.WriteLine("A script with the same name already exists");
                 Console.ForegroundColor = originalTextColor;
 
-                Console.Write("(o)verwrite the file, (c)ontinue with a different alias, or cancel program (x)? (Default is cancel program)\n-> ");
+                Console.Write("(o)verwrite the batch script, (c)ontinue with a different name, or cancel the process (x)? (When anything else is entered, the process will be canceled)\n-> ");
 
                 switch (Console.ReadLine().ToLower())
                 {
                     case "o":
-                        Console.Write("Really overwrite the file? (y/n): (Default is no and the process will be canceled)\n-> ");
+                        Console.Write($"Really overwrite the {batchFilePath} (y/n)? (When anything else than `y` is entered, the process will be canceled): \n-> ");
                         if (Console.ReadLine().ToLower() == "y")
                         {
-                            Console.WriteLine($"The binary `{batchFilePath}` gets overwriten");
+                            Console.WriteLine($"`{batchFilePath}` gets overwriten");
                             WaitBeforeBadThingsHappen();
                             return batchFilePath;
                         } else { 
@@ -180,22 +179,23 @@ namespace BinAppender
                     case "c":
                         string? aliasInput = null;
                         Console.Write("\n");
+
                         while (StringIsBad(aliasInput)){
-                            Console.Write("Enter alias without the file extension:\n-> ");
+                            Console.Write("Enter the name for the batch file without the file extension:\n-> ");
                             aliasInput = Console.ReadLine();
                         }
 
                         batchFilePath = $"{BinPath}\\{aliasInput}.bat";
                         if (!StringIsBad(aliasInput) && !File.Exists(batchFilePath))
                             return batchFilePath;
-                        
+
                         break;
 
 
                     default:
-                        return string.Empty;  // Es soll abgebrochen werden
+                        return string.Empty;  // Process should be canceled
                 }
-                batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(pathOfOriginalFile)}.bat";  // This code gets executed when a different alias is being entered and the file exists
+                batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(pathOfOriginalFile)}.bat";  // This code gets executed when 1. A different alias has been entered and 2. A script with the newly entered alias already exists
             }
             throw new FileNotFoundException("The file has not been found");
         }
@@ -207,7 +207,7 @@ namespace BinAppender
             if (File.Exists(batchFilePath))
             {
                     string? returnedBinPath = WhenBatchFileAlreadyExists(pathOfOriginalFile, batchFilePath);
-                    // If string.Empty is returned, then the user wants to cancel the process
+                    // If string.Empty is returned then the user wants to cancel the process
                     if (returnedBinPath == string.Empty) {
                         Console.WriteLine("Process canceled");
                         return;
@@ -215,7 +215,7 @@ namespace BinAppender
                     aliasForBatchFile = returnedBinPath;
             }
 
-            WriteBatchToBin(pathOfOriginalFile, aliasForBatchFile);
+            WriteBatchToBinDirectory(pathOfOriginalFile, aliasForBatchFile);
             Console.WriteLine("Done!");
         }
 
@@ -223,15 +223,15 @@ namespace BinAppender
         private static void UserInputIsAppend()
         {
             string? pathOfOriginalFile = null;
-            Console.Write("\n");  // This newline is only being printed out before the user input because it looks prettier
+            Console.WriteLine();  // This newline is being printed out, before the user input, because it looks prettier that way
             while (StringIsBad(pathOfOriginalFile))
             {
-                Console.Write("Enter the path to the original file (with the file extension):\n-> ");
+                Console.Write("Enter the path to the file (with the file extension) that the batch script will execute:\n-> ");
                 pathOfOriginalFile = Console.ReadLine();
             }
 
-            // Remove any " since Windows Explorer likes to copy the path with 2 " at the beginning and at the end.
-            // Windows Explorer does this when the filepath is copied through {filename} > right-click > Copy as Path
+            // Remove any " since Windows-Explorer likes to copy the path with an " at the beginning and another " the end.
+            // Windows-Explorer does this when the filepath is copied through file > right-click > Copy as Path. (Or atleast Windows 11 does that)
             if (pathOfOriginalFile.Contains('\"'))
                 pathOfOriginalFile = pathOfOriginalFile.Trim('\"');
 
@@ -241,7 +241,7 @@ namespace BinAppender
                 pathOfOriginalFile = Console.ReadLine();
             }
 
-            Console.Write("\nEnter an alias for the binary without a file extension: (Just press enter if there shouldn't be a different name for the binary)\n-> ");
+            Console.Write("\nEnter the name for the batch script without the file extension: (Press enter if the name of the script should be the same as the name of the executable)\n-> ");
             string? aliasInput = Console.ReadLine();
             if (!StringIsBad(aliasInput))
             {
@@ -261,30 +261,29 @@ namespace BinAppender
                     return;
                 }
 
-                pathOfOriginalFile = returnedBinPath;  // The file will be written outside this if-block
+                pathOfOriginalFile = returnedBinPath;
             }
 
-            Console.WriteLine("No alias is being used");
-            WriteBatchToBin(pathOfOriginalFile);
+            WriteBatchToBinDirectory(pathOfOriginalFile);
             Console.WriteLine("Done!");
         }
 
 
-        private static void UserInputIsOverwriteBinary()
+        private static void UserInputIsOverwrite()
         {
             Console.WriteLine();
-            string? binaryName = null;
-            while (StringIsBad(binaryName))
+            string? batchFileName = null;
+            while (StringIsBad(batchFileName))
             {
-                Console.Write("Enter the alias without the file extension:\n-> ");
-                binaryName = Console.ReadLine();
+                Console.Write("Enter the name of the batch script without the file extension:\n-> ");
+                batchFileName = Console.ReadLine();
             }
 
             Console.WriteLine();
             string? originalFilePath = null;
             while (StringIsBad(originalFilePath) || !File.Exists(originalFilePath))
             {
-                Console.Write("Enter the path to the original file (with the file extension):\n-> ");
+                Console.Write("Enter the path to the file (with the file extension) that the batch script should execute instead:\n-> ");
                 originalFilePath = Console.ReadLine();
 
                 // Remove any " since Windows Explorer likes to copy the path with 2 " at the beginning and at the end.
@@ -293,12 +292,14 @@ namespace BinAppender
                     originalFilePath = originalFilePath.Trim('\"');
 
                 if (!File.Exists(originalFilePath))
-                    Console.Write("The file doesn't exist.\n"); 
+                    Console.Write("The file doesn't exist.\n");
             }
             
-            // A file will be writen or overwriten, whether the file exists or not
-            Console.WriteLine($"Binary `{binaryName}` will be overwritten");
-            WriteBatchToBin(originalFilePath, binaryName);
+            if (File.Exists(batchFileName))
+                Console.WriteLine($"`{batchFileName}` will be overwritten");
+            else
+                Console.WriteLine($"`{batchFileName}` will be created");
+            WriteBatchToBinDirectory(originalFilePath, batchFileName);
             Console.WriteLine("Done!");
         }
         #endregion
@@ -307,16 +308,16 @@ namespace BinAppender
         private static void ChangeBinPath()
         {
             string? binPathByUser = null;
-            Console.Write("\nEnter the path to the bin folder:\n-> ");
+            Console.Write("\nEnter the path to the bin directory:\n-> ");
             while (!Directory.Exists(binPathByUser) || StringIsBad(binPathByUser)) {
                 binPathByUser = Console.ReadLine();
 
                 if(File.Exists(binPathByUser))
-                    Console.Write("\nThe given Path is a File. Enter the path to the bin folder again:\n->");
+                    Console.Write("\nThe given path is a file. Enter the path to the bin directory again:\n->");
 
                 else if (!Directory.Exists(binPathByUser))
                 {
-                    Console.Write($"\nThe directory doesn't exist. Create the (d)irectory `{binPathByUser}` or (c)ancel the process? (Default ist to cancel the process):\n-> ");
+                    Console.Write($"\nThe directory doesn't exist. Create the (d)irectory `{binPathByUser}` or (c)ancel the process? (When anything else than `d` is entered, the process will be canceled):\n-> ");
 
                     if (Console.ReadLine().ToLower() == "d")
                     {
@@ -332,13 +333,13 @@ namespace BinAppender
             BinPath = binPathByUser;
             Environment.SetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, BinPath, EnvironmentVariableTarget.User);
 
-            // Add binappender to the new bin directory if it it isn't there already
-            if (!File.Exists($"{BinPath}\\binappender.bat"))  // It's possible that the batch file for binappender is already in the new bin directory
+            // Add a script for binappender to the new bin directory if it isn't already there
+            if (!File.Exists($"{BinPath}\\binappender.bat"))
             {
-                Console.WriteLine($"BinAppender.exe will be added to the path `{BinPath}`");
-                string directoryOfExe = Path.GetDirectoryName(AppContext.BaseDirectory);  // TODO: Check if this stuff works when it's executed as a single file and normally through Visual Studio
+                Console.WriteLine($"A batch script for BinAppender.exe will be added to `{BinPath}`");
+                string directoryOfExe = Path.GetDirectoryName(AppContext.BaseDirectory);  // TODO: Check if this works when 1. It's executed as a single file and 2. It's executed normally through Visual Studio
                 string pathToExe = Path.Combine(directoryOfExe, "BinAppender.exe");
-                WriteBatchToBin(pathToExe, "binappender");
+                WriteBatchToBinDirectory(pathToExe, "binappender");
             }
 
             Console.WriteLine("Done!");
@@ -355,7 +356,7 @@ namespace BinAppender
             {
                 ConsoleColor originalTextColor = Console.ForegroundColor;
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.Write("No environment variable for the bin folder has been created");
+                Console.Write("No environment variable for the bin directory has been created");
                 Console.ForegroundColor = originalTextColor;
                 ChangeBinPath();
             }
@@ -369,7 +370,7 @@ namespace BinAppender
 
             if (!pathVariable.Split(';').Contains($"%{ENVIRONMENT_VARIABLE_NAME}%"))
             {
-                Console.Write($"\nEnvironment variable %Path% doesn't contain %{ENVIRONMENT_VARIABLE_NAME}%. %{ENVIRONMENT_VARIABLE_NAME}% is being added\n");
+                Console.Write($"\nEnvironment variable \"Path\" doesn't contain \"%{ENVIRONMENT_VARIABLE_NAME}%\". \"%{ENVIRONMENT_VARIABLE_NAME}%\" is being added\n");
                 pathVariable = string.Join(';', pathVariable.Split(';').Append($"%{ENVIRONMENT_VARIABLE_NAME}%"));
                 Environment.SetEnvironmentVariable("Path", pathVariable, EnvironmentVariableTarget.User);
             }
@@ -402,28 +403,30 @@ namespace BinAppender
 
                     case "d":
                     case "delete":
-                        UserInputIsDeleteBinary();
+                        UserInputIsDelete();
                         break;
 
                     case "g":
-                    case "get":
-                        UserInputIsListFiles();
+                    case "getbin":
+                        Console.WriteLine();
+                        Console.WriteLine(BinPath);
                         break;
 
                     case "h":
                     case "help":
                         UserInputIsHelp();
                         break;
+                    
+                    // Some use WSL or Powershell, some use CMD, some use both
+                    case "l":
+                    case "ls":
+                    case "dir":
+                        UserInputIsList();
+                        break;
 
                     case "o":
                     case "overwrite":
-                        UserInputIsOverwriteBinary();
-                        break;
-
-                    case "p":
-                    case "print":
-                        Console.WriteLine();
-                        Console.WriteLine(BinPath);
+                        UserInputIsOverwrite();
                         break;
 
                     case "q":
@@ -433,7 +436,7 @@ namespace BinAppender
 
                     default: continue;
                 }
-                Console.WriteLine($"\n{new string('-', Console.WindowWidth)}\n");  // After any option has been completed or cancelled
+                Console.WriteLine($"\n{new string('-', Console.WindowWidth)}\n");  // After a command has been completed or cancelled
             }
         }
     }
