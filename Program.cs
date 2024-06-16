@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Security.Authentication.ExtendedProtection;
 using System.Threading;
@@ -20,12 +22,12 @@ namespace BinAppender
   h, help       This help page
   l, ls, dir    Get all of the scripts in the bin directory and their content
   o, overwrite  Overwrite an existing or add a new batch script
-  q, quit       Exit this Program
+  q, quit, exit Exit this Program
 
 """;
 
         private const string ENVIRONMENT_VARIABLE_NAME = "BinAppender_BinPath";
-        private static string BinPath = string.Empty;  // It gets the actual path to the bin directory is InitBinPath()
+        private static string BinPath = string.Empty;  // It gets the actual path to the bin directory in InitBinPath()
 
         private static void WaitBeforeBadThingsHappen()  // The user has time to Ctrl+C just in case accidents happen
             => Thread.Sleep(3000);
@@ -47,6 +49,9 @@ namespace BinAppender
 
         private static void UserInputIsDelete()
         {
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             string? batchFileName = null;
             Console.Write("\n");
             while (StringIsBad(batchFileName)) {
@@ -76,6 +81,9 @@ namespace BinAppender
 
         private static void UserInputIsList()
         {
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             const string FILE_EXTENSION_FOR_SCRIPTS_IN_BINPATH = ".bat";
 
             // TopDirectoryOnly because it's possible that there are batch files in subdirectories of `BinPath`, that aren't part of %BinAppender_BinPath%
@@ -203,6 +211,9 @@ namespace BinAppender
 
         private static void UserWantsAlias(string pathOfOriginalFile, string? aliasForBatchFile)
         {
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             string batchFilePath = $"{BinPath}\\{Path.GetFileNameWithoutExtension(aliasForBatchFile)}.bat";
             if (File.Exists(batchFilePath))
             {
@@ -222,6 +233,9 @@ namespace BinAppender
 
         private static void UserInputIsAppend()
         {
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             string? pathOfOriginalFile = null;
             Console.WriteLine();  // This newline is being printed out, before the user input, because it looks prettier that way
             while (StringIsBad(pathOfOriginalFile))
@@ -271,6 +285,9 @@ namespace BinAppender
 
         private static void UserInputIsOverwrite()
         {
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             Console.WriteLine();
             string? batchFileName = null;
             while (StringIsBad(batchFileName))
@@ -305,6 +322,38 @@ namespace BinAppender
         #endregion
 
 
+        #region Set and change environment variables
+        private static bool CheckIfBinPathExists()
+        {
+            // It's possible that the directory of BinPath has been deleted midway through a process
+
+            if (Directory.Exists(BinPath))
+                return true;
+
+            ConsoleColor originalTextColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"\nThe directory for the batch scripts `{BinPath}` doesn't exist.");
+            Console.ForegroundColor = originalTextColor;
+            Console.Write("Create the (d)irectory, (e)nter a different directory, or (c)ancel the process? (When anything else than `d` or `e` is entered, the process will be canceled):\n-> ");
+
+            switch (Console.ReadLine().ToLower())
+            {
+                case "d":
+                    Directory.CreateDirectory(BinPath);
+                    Console.WriteLine($"Directory `{BinPath}` created\n");
+                    break;
+
+                case "e":
+                    ChangeBinPath();
+                    break;
+
+                default:
+                    return false;
+            }
+            return true;
+        }
+
+
         private static void ChangeBinPath()
         {
             string? binPathByUser = null;
@@ -325,7 +374,7 @@ namespace BinAppender
                         Console.WriteLine($"Directory `{binPathByUser}` created");
                         break;
                     } else
-                        return;
+                        QuitProgram(1);
                 } else if (StringIsBad(binPathByUser))
                     Console.Write("\nEnter the path to the bin folder:\n-> ");
             }
@@ -333,19 +382,26 @@ namespace BinAppender
             BinPath = binPathByUser;
             Environment.SetEnvironmentVariable(ENVIRONMENT_VARIABLE_NAME, BinPath, EnvironmentVariableTarget.User);
 
-            // Add a script for binappender to the new bin directory if it isn't already there
+            string directoryOfBinAppenerExe = Path.GetDirectoryName(AppContext.BaseDirectory);
+
+            // This adds a script for binappender.exe to the new bin directory if it isn't already there
             if (!File.Exists($"{BinPath}\\binappender.bat"))
             {
                 Console.WriteLine($"A batch script for BinAppender.exe will be added to `{BinPath}`");
-                string directoryOfExe = Path.GetDirectoryName(AppContext.BaseDirectory);  // TODO: Check if this works when 1. It's executed as a single file and 2. It's executed normally through Visual Studio
-                string pathToExe = Path.Combine(directoryOfExe, "BinAppender.exe");
-                WriteBatchToBinDirectory(pathToExe, "binappender");
+                string pathToBinAppenderExe = Path.Combine(directoryOfBinAppenerExe, "BinAppender.exe");
+                WriteBatchToBinDirectory(pathToBinAppenderExe, "binappender");
             }
+
+            // TODO: Test if this works
+            // Copied from chocolatey (https://github.com/chocolatey/choco/blob/develop/src/chocolatey.resources/redirects/RefreshEnv.cmd)
+            // This is the easiest way for me to refresh all of the Environment Variables in the console instance
+            // Process.Start(Path.Combine(directoryOfBinAppenerExe, "RefreshEnv.cmd")).WaitForExit();
+            string pathToRefreshEnv = Path.Combine(directoryOfBinAppenerExe, "RefreshEnv.cmd");
+            new ProcessStartInfo("cmd.exe", pathToRefreshEnv);
 
             Console.WriteLine("Done!");
             Console.WriteLine("\n");
         }
-
 
         private static void InitBinPath()
         {
@@ -361,8 +417,11 @@ namespace BinAppender
                 ChangeBinPath();
             }
 
+            if (!CheckIfBinPathExists())
+                QuitProgram(1);
+
             string? pathVariable = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User);
-            if (StringIsBad(pathVariable)){
+            if (StringIsBad(pathVariable)) {
                 Console.Write("Environment variable \"Path\" has not been found");
                 QuitProgram(1);
                 return;
@@ -374,9 +433,11 @@ namespace BinAppender
                 pathVariable = string.Join(';', pathVariable.Split(';').Append($"%{ENVIRONMENT_VARIABLE_NAME}%"));
                 Environment.SetEnvironmentVariable("Path", pathVariable, EnvironmentVariableTarget.User);
             }
-        }
 
+        }
+        #endregion
         
+
         public static void Main()
         {
             InitBinPath();
@@ -407,7 +468,7 @@ namespace BinAppender
                         break;
 
                     case "g":
-                    case "getbin":
+                    case "get":
                         Console.WriteLine();
                         Console.WriteLine(BinPath);
                         break;
@@ -431,6 +492,7 @@ namespace BinAppender
 
                     case "q":
                     case "quit":
+                    case "exit":
                         QuitProgram(0);
                         break;
 

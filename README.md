@@ -9,7 +9,7 @@ This is a .NET console application that is supposed to act like `/usr/local/bin/
 ### Just the .exe file
 
 1. Go to the [zip file](./I%20just%20want%20the%20program.zip)
-2. Download the raw file
+2. Download it
 3. Extract the .exe file
 
 ### The entire project
@@ -27,9 +27,9 @@ This is a .NET console application that is supposed to act like `/usr/local/bin/
 ## What this program essentially does
 
 - When executed for the first time:
-   1. Create the environment variable `%BinAppender_BinPath%` with the path to the directory for the batch scripts as its value
+   1. Create the environment variable `%BinAppender_BinPath%` with the value: The path to the directory that contains batch scripts (for example `C:\bin`
    2. Add `%BinAppender_BinPath%` to `%Path%`
-- Write a batch file, to the path of `%BinAppender_BinPath%`, that looks like this:
+- Write a batch file in `%BinAppender_BinPath%` that looks like this:
 
         @echo off
-        "{file path provided by the user}" %*
+        "{file path that will be executed}" %*
